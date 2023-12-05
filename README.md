@@ -10,7 +10,7 @@ Please use scripts (.py) for files containing functions that other people may be
 
 Use Jupyter/Scripts for specific calculations (Using the more general functions in the .py scripts) that are relevant for the project.
 
-Notice how I can import things from inside a file in cobos folder using
+Notice how I can import things made by Sunny from inside a file in cobos folder (Eg: cobos/XX analytical-numerical comparison) using
 ```Python
 # -- Header (For changing the path to the parent folder so that there are no problems with relative imports)
 import os
