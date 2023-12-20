@@ -1,15 +1,12 @@
 import numpy as np
-# from math import ceil, floor
-from itertools import combinations
 import matplotlib.pyplot as plt
+from itertools import combinations
 from collections import namedtuple
-import math
-
-pi = np.pi
 
 
 ProbConf = namedtuple('ProbConf', ['conf', 'prob'])
 
+pi = np.pi
 epsilon = 1e-12
 
 # Kinetic coupling sign
@@ -31,8 +28,10 @@ def wavenumbers(L, apbc=False):
     return [k + offset for k in range(1, L+1)]
 
 
-def fermi_sea(L, apbc=False):
+def fermi_sea(L, apbc=None):
     """Return a list of wavenumbers that fills the Fermi sea"""
+    if apbc is None:
+        apbc = default_apbc(L)
     dispersion = dispersion_func(L)
     sea = [ k for k in wavenumbers(L, apbc) if dispersion(k) <= epsilon]
     return sea
@@ -84,21 +83,41 @@ def all_confs(L, Nparticles = None, apbc = False):
     return combinations(range(1, L+1), Nparticles)
 
 
-def slater_det(L, positions = None, apbc = False):
+def default_apbc(L):
+    """ The correct boundary conditions (`apbc` True or False) in order to obtain
+    the ground state of the XX chain
+    """
+    if L % 2 == 0:
+        # In correspondence with the XX model:
+        #   - For even size, the correct numbers of particles is L/2
+        #   - For even num of particles assume APBC
+        # L/2 even <=> L mod 4 = 0
+        # L/2 odd  <=> L mod 4 = 2
+        apbc = True if L % 4 == 0 else False
+    else:
+        # For odd sizes, the PBC and APBC sectors are degenerate
+        # So assume PBC
+        apbc = False
+    return apbc
+
+
+def slater_det(L, configuration = None, apbc = None):
     """Compute the Slater determinant directly"""
+    if apbc is None:
+        apbc = default_apbc(L)
     sea = fermi_sea(L, apbc)
-    if not positions:
-        positions = staggered_conf(L, Nparticles=len(sea))
-    if len(sea) != len(positions):
-        raise ValueError(f"Length of `positions` ({len(positions)}) does not match the number of wavenumbers k's ({len(sea)})")
-    N = len(positions)
-    mat = np.zeros((N, N), dtype=np.complex64)
-    # theta_F = np.exp(-2j * pi * fermi_wavenumber(L) / L)
-    for row, r in enumerate(positions):
+    if not configuration:
+        configuration = staggered_conf(L, Nparticles=len(sea))
+    else:
+        if len(sea) != len(configuration):
+            raise ValueError(f"Number of particles ({len(configuration)})"
+                             f" does not match the number of wavenumbers k's ({len(sea)})")
+    Nparticles = len(configuration)
+    mat = np.zeros((Nparticles, Nparticles), dtype=np.complex128)
+    for row, r in enumerate(configuration):
         for col, k in enumerate(sea):
-            # mat[row][kj] = (theta_F ** ri) * np.exp(-2j * pi * ri * (kj-1) / L)
             mat[row][col] =  np.exp(-2j * pi * r * k / L)
-    return np.abs(np.linalg.det(mat))**2 / (L**N)
+    return np.abs(np.linalg.det(mat))**2 / (L**Nparticles)
 
 
 def vandedet(L, positions = None):
@@ -114,7 +133,7 @@ def vandedet(L, positions = None):
     return res / (L**len(positions))
 
 
-def probabilities(L, Nparticles = None, apbc = False) -> list[ProbConf]:
+def probabilities(L, Nparticles = None, apbc = None) -> list[ProbConf]:
     """Compute the probabilities of the configurations of fermions at size `L`"""
     # TODO calcolare prima quali condizioni  minore energia
     return [
@@ -128,16 +147,18 @@ def max_probs(L, Nparticles = None, apbc=False):
     maxp = max(probs, key=lambda x: x.prob)
     # Most probabibly there is more than just one max prob conf
     return [
-        p for p in probs if np.abs(p.prob - maxp.prob) < epsilon
+        p for p in probs if np.abs(p.prob - maxp.prob) < 1e-12
     ]
 
 
-def renyi_inf_entropy(L, apbc=False, pedantic=False):
-    print(f"L = {L}")
+def renyi_inf_entropy(L, apbc=None, pedantic=False):
+    print(f" > computing renyi inf entropy for L = {L}:", end=" ")
     if pedantic:
-        return -np.log(max(probabilities(L, apbc=apbc), key=lambda x: x.prob).prob)
+        rie = -np.log(max(probabilities(L, apbc=apbc), key=lambda x: x.prob).prob)
     else:
-        return -np.log(slater_det(L, apbc=apbc))
+        rie = -np.log(slater_det(L, apbc=apbc))
+    print(f"{rie:.8f}")
+    return rie
 
 
 def shannon_entropy(L):
@@ -160,6 +181,7 @@ def test_fermi_sea(L):
     pbc_sea  = fermi_sea(L, apbc=False)
     print(f"  APBC (size={len(apbc_sea)}): {apbc_sea}")
     print(f"  PBC  (size={len(pbc_sea)}): {pbc_sea}")
+
 
 def test_gs_energy(L):
     print(f"Size L = {L}, ground state energy for:")
