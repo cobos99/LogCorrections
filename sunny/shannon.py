@@ -1,13 +1,19 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from itertools import combinations
-from collections import namedtuple
+from dataclasses import dataclass
+from collections.abc import Callable, Iterator
 
-
-ProbConf = namedtuple('ProbConf', ['conf', 'prob'])
+# Class for the probability of a configuration
+@dataclass
+class ProbConf:
+    conf: tuple[int] # the configuration of particles (i.e. their positions)
+                     # the position index start from 1
+    prob: float      # probability of such configuration
 
 pi = np.pi
 epsilon = 1e-12
+
+
 
 # Kinetic coupling sign
 J = -1
@@ -15,77 +21,32 @@ J = -1
 #------------------------------------------------------------
 # Dispersion relations and Fermi sea
 #------------------------------------------------------------
-def dispersion_func(L):
-    """Dispersion relation for free fermions (antiferro, no minus sign)"""
+
+def dispersion_func(L: int) -> Callable[[int], float]:
+    """
+    Return the dispersion *function* of free fermions on a chain of size `L`.
+    The kinetic coupling is determined by the global variable `J`
+    """
     def dispersion(k):
         return 2 * J * np.cos( 2 * pi * k / L)
     return dispersion
 
 
-def wavenumbers(L, apbc=False):
-    """Return the wavenumbers `k` for size `L`, with periodic or antiperiodic bc's"""
+def wavenumbers(L: int, apbc: bool = False) -> list[int]:
+    """
+    Return the list of wavenumbers `k` for size `L`.
+    The wavenumbers `k`s are integers, such that `2*pi*k/L` are the momenta.
+    Antiperiodic BC is automatically deduced, unless specified by `apbc`.
+    """
     offset = 1/2 if apbc else 0
     return [k + offset for k in range(1, L+1)]
 
 
-def fermi_sea(L, apbc=None):
-    """Return a list of wavenumbers that fills the Fermi sea"""
-    if apbc is None:
-        apbc = default_apbc(L)
-    dispersion = dispersion_func(L)
-    sea = [ k for k in wavenumbers(L, apbc) if dispersion(k) <= epsilon]
-    return sea
-
-
-def ground_state_energy(L, apbc=False):
-    sea = fermi_sea(L, apbc)
-    dispersion = dispersion_func(L)
-    return sum(dispersion(k) for k in sea)
-
-
-def fermi_wavenumber(L, apbc=False):
-    """Supposedly the Fermi wavenumber"""
-    # TODO: works only for J < 0
-    ks = wavenumbers(L, apbc)[:L//2]
-    dispersion = dispersion_func(L)
-    return [ k for k in ks if dispersion(k) <= epsilon][-1]
-
-
-#------------------------------------------------------------
-# Slater and Vandermonde determinants
-#------------------------------------------------------------
-def vandedet_func(L):
-    """Return function that enter the Vandermonde determinant"""
-    def f(r1, r2):
-        return 4 * (np.sin(pi * (r1 - r2) / L) ** 2)
-    return f
-
-
-def conf_set(L, apbc=False):
-    """Return a staggered configuration of the positions of the fermions"""
-    l = (L-1)/2
-    if l % 2 == 1:
-        return tuple(n for n in range(1, L+1, 2))
-    else:
-        return tuple(n for n in range(2, L+1, 2))
-
-
-def staggered_conf(L, Nparticles=None, start=1):
-    if not Nparticles:
-        Nparticles = L // 2
-    return tuple(start + 2*n for n in range(0, Nparticles))
-
-
-def all_confs(L, Nparticles = None, apbc = False):
-    """All possible configurations of `Nparticles` fermions on a chain size `L`"""
-    if Nparticles is None:
-        Nparticles = len(fermi_sea(L, apbc))
-    return combinations(range(1, L+1), Nparticles)
-
-
-def default_apbc(L):
-    """ The correct boundary conditions (`apbc` True or False) in order to obtain
-    the ground state of the XX chain
+def default_apbc(L: int) -> bool:
+    """
+    Deduce the correct boundary conditions in order to obtain
+    the ground state of the XX chain with periodic boundary conditions.
+    Returns `True` if antiperiodic BC have to be applied.
     """
     if L % 2 == 0:
         # In correspondence with the XX model:
@@ -101,57 +62,209 @@ def default_apbc(L):
     return apbc
 
 
-def slater_det(L, configuration = None, apbc = None):
-    """Compute the Slater determinant directly"""
+def fermi_sea(L: int, apbc: bool | None = None) -> list[int]:
+    """
+    Return the list of wavenumbers `k`s that fills the Fermi sea
+    for a system of size `L`.
+    Antiperiodic BC is automatically deduced, unless specified by `apbc`.
+    """
+    if apbc is None:
+        apbc = default_apbc(L)
+    dispersion = dispersion_func(L)
+    sea = [ k for k in wavenumbers(L, apbc) if dispersion(k) <= epsilon]
+    return sea
+
+
+def ground_state_energy(L: int, apbc: bool | None = None) -> float:
+    """
+    Returns the ground state energy for size `L`.
+    Antiperiodic BC is automatically deduced, unless specified by `apbc`.
+    """
+    dispersion = dispersion_func(L)
+    return sum(dispersion(k) for k in fermi_sea(L, apbc))
+
+
+def fermi_wavenumber(L: int, apbc: bool | None = None) -> list[int]:
+    """
+    Returns the Fermi wavenumber `k_F` for a system of size `L`.
+    Antiperiodic BC is automatically deduced, unless specified by `apbc`.
+    """
+    if apbc is None:
+        apbc = default_apbc(L)
+    momenta = wavenumbers(L, apbc)[:L//2]
+    dispersion = dispersion_func(L)
+    if J < 0:
+        return [ k for k in momenta if dispersion(k) <= epsilon][-1]
+    else:
+        return [ k for k in momenta if dispersion(k) <= epsilon][0]
+
+
+#------------------------------------------------------------
+# Particle configurations
+#------------------------------------------------------------
+
+def staggered_conf(L: int, Np: int | None = None, start: int = 1) -> tuple[int]:
+    """
+    Return a staggered configuration of particle positions (alternate occupied
+    and empty site) on a chain of size `L`. The position indices start from 1.
+    If the number of particles `Np` is not specified, then `L/2` is assumed.
+    `start` marks the first occupied site, by default is `1`.
+    """
+    if Np is None:
+        Np = L // 2
+    if start + 2*(Np - 1) > L:
+        raise ValueError(f"The values start={start} and Np={Np} exceeds the size of chain L={L}")
+    return tuple(start + 2*n for n in range(Np))
+
+
+def all_confs(L: int, Np: int | None = None, apbc: bool | None = None) -> Iterator[tuple[int]]:
+    """
+    All possible configurations of `Np` particles on a chain size `L`.
+    Antiperiodic BC is automatically deduced, unless specified by `apbc`.
+    The position indices start from 1.
+    """
+    if Np is None:
+        Np = len(fermi_sea(L, apbc))
+    return combinations(range(1, L+1), Np)
+
+
+#------------------------------------------------------------
+# Slater determinants
+#------------------------------------------------------------
+
+def slater_det(
+        L: int,
+        conf: tuple[int] | None = None,
+        apbc: bool | None = None
+    ) -> float:
+    """
+    Compute the Slater determinant directly of the given configuration `conf`.
+    Antiperiodic BC is automatically deduced, unless specified by `apbc`.
+    """
     if apbc is None:
         apbc = default_apbc(L)
     sea = fermi_sea(L, apbc)
-    if not configuration:
-        configuration = staggered_conf(L, Nparticles=len(sea))
-    else:
-        if len(sea) != len(configuration):
-            raise ValueError(f"Number of particles ({len(configuration)})"
-                             f" does not match the number of wavenumbers k's ({len(sea)})")
-    Nparticles = len(configuration)
-    mat = np.zeros((Nparticles, Nparticles), dtype=np.complex128)
-    for row, r in enumerate(configuration):
-        for col, k in enumerate(sea):
-            mat[row][col] =  np.exp(-2j * pi * r * k / L)
-    return np.abs(np.linalg.det(mat))**2 / (L**Nparticles)
+    if not conf:
+        conf = staggered_conf(L, Np=len(sea))
+    Nparticles = len(conf)
+    if len(sea) != len(conf):
+        raise ValueError(f"Number of particles in `conf` ({len(conf)}) does not"
+                         f" match the number of occupied modes in the Fermi sea ({len(sea)})")
+
+    positions = np.array(conf).reshape((Nparticles, 1))
+    momenta = np.array(sea)
+    slater_mat = np.exp(-2j * pi * positions * momenta / L)
+    return np.abs(np.linalg.det(slater_mat))**2 / (L**Nparticles)
 
 
-def vandedet(L, positions = None):
-    """Compute Slater determinant via Vandermonde determinant"""
-    if positions is None:
-        positions = conf_set(L)
-    # print(f"L = {L}, positions = {positions}")
+#------------------------------------------------------------
+# Vandermonde determinants
+#------------------------------------------------------------
+
+def vandedet_func(L: int) -> Callable[[int, int], float]:
+    """
+    Return the main function that enter in the Vandermonde determinant
+    `L` is the size of the chain.
+    """
+    def f(r1, r2):
+        return 4 * (np.sin(pi * (r2 - r1) / L) ** 2)
+    return f
+
+
+def vandemonde_det(L: int, conf: tuple[int] | None = None) -> float:
+    """
+    Compute the Vandermonde determinant for the given configuration `conf`.
+    """
+    # TODO not finished and not tested
+    if conf is None:
+        conf = staggered_conf(L, Np=len(fermi_sea(L)))
     f = vandedet_func(L)
     res = 1
-    for n, r1 in enumerate(positions):
-        for r2 in positions[n+1:]:
+    for n, r1 in enumerate(conf):
+        for r2 in conf[n+1:]:
             res = res * f(r1, r2)
-    return res / (L**len(positions))
+    return res / (L**len(conf))
 
 
-def probabilities(L, Nparticles = None, apbc = None) -> list[ProbConf]:
-    """Compute the probabilities of the configurations of fermions at size `L`"""
-    # TODO calcolare prima quali condizioni  minore energia
-    return [
-        ProbConf(conf=conf, prob=slater_det(L, conf, apbc))
-        for conf in all_confs(L, Nparticles, apbc)
-    ]
+#------------------------------------------------------------
+# Probabilities of configurations
+#------------------------------------------------------------
+def probabilities(
+        L: int,
+        Np: int | None = None,
+        apbc: bool | None = None,
+        method: str = "slater"
+    ) -> Iterator[ProbConf]:
+    """
+    Compute the probabilities of all possible configurations of `Np` particles
+    on a chain of size `L`.
+    If not specified, `Np` is the numbers of occupied modes in the Fermi sea.
+    Antiperiodic BC is automatically deduced, unless specified by `apbc`.
+
+    The probabilities can be computed either directly with the Slater
+    determinant or with the Vandermonde determinant, by setting the `method`
+    parameter to "slater" or "vande" resp.
+
+    The function returns a generator, not a list.
+    In this way we avoid storing in memory all the possible configurations.
+    The number of combinations grows exponentially.
+    """
+    if method == "slater":
+        func = slater_det
+    elif method == "vande":
+        func = vandemonde_det
+    else:
+        raise ValueError(f"Value '{method}' of `method` not recognized")
+
+    return (
+        ProbConf(conf=conf, prob=func(L, conf, apbc))
+        for conf in all_confs(L, Np, apbc)
+    )
 
 
-def max_probs(L, Nparticles = None, apbc=False):
-    probs = probabilities(L, Nparticles, apbc)
+def max_probs(L: int, Np: int | None = None, apbc: bool | None=None):
+    """
+    Return a list of the configurations with maximum probabilities
+    """
+    probs = list(probabilities(L, Np, apbc))
     maxp = max(probs, key=lambda x: x.prob)
     # Most probabibly there is more than just one max prob conf
     return [
-        p for p in probs if np.abs(p.prob - maxp.prob) < 1e-12
+        p for p in probs
+            if np.abs(p.prob - maxp.prob) < epsilon
     ]
 
 
-def renyi_inf_entropy(L, apbc=None, pedantic=False):
+def max_probs2(L, Np : bool | None = None, apbc: bool | None = None):
+    """
+    Return a list of the configurations with maximum probabilities.
+    Alternative method.
+    """
+    maxp = -1.0
+    max_confs = []
+    for p in probabilities(L, Np, apbc):
+        if p.prob - maxp > epsilon:
+            # new maximum
+            maxp = p.prob
+            max_confs = [p]
+        elif abs(p.prob - maxp) < epsilon:
+            # same probability
+            max_confs.append(p)
+    return max_confs
+
+
+
+#------------------------------------------------------------
+# Renyi inf entropy and Shannon entropy
+#------------------------------------------------------------
+def renyi_inf_entropy(L: int, apbc: bool | None = None, pedantic: bool =False):
+    """
+    Compute the Renyi entropy of infinite order, i.e. -log(p_max), for a system
+    of size `L`.
+    With the option `pedantic`, search for the actual configuration with maximum
+    probability instead of supposing that is the one with a staggered
+    configuration.
+    """
     print(f" > computing renyi inf entropy for L = {L}:", end=" ")
     if pedantic:
         rie = -np.log(max(probabilities(L, apbc=apbc), key=lambda x: x.prob).prob)
@@ -161,75 +274,13 @@ def renyi_inf_entropy(L, apbc=None, pedantic=False):
     return rie
 
 
-def shannon_entropy(L):
-    """Compute the Shannon entropy for free fermions at size `L`"""
-    print(f" * Generating confs for L = {L}")
+def shannon_entropy(L: int, apbc: bool | None = None):
+    """
+    Compute the Shannon entropy for free fermions at size `L`
+    """
+    print(f" > Computing the probabilities for L = {L}")
     confs = all_confs(L)
-    print(" * Computing the probabilities")
-    probs = np.array([vandedet(L, conf) for conf in confs])
+    probs = np.array([slater_det(L, conf) for conf in confs])
     ent = np.sum([ -p * np.log(p) for p in probs])
-    print(f">> Shannon entropy at L = {L}: {ent}")
+    print(f" >>> Shannon entropy at L = {L}: {ent}")
     return ent
-
-
-#------------------------------------------------------------
-# Some testing
-#------------------------------------------------------------
-def test_fermi_sea(L):
-    print(f"Size L = {L}, Fermi sea for:")
-    apbc_sea = fermi_sea(L, apbc=True)
-    pbc_sea  = fermi_sea(L, apbc=False)
-    print(f"  APBC (size={len(apbc_sea)}): {apbc_sea}")
-    print(f"  PBC  (size={len(pbc_sea)}): {pbc_sea}")
-
-
-def test_gs_energy(L):
-    print(f"Size L = {L}, ground state energy for:")
-    apbc_sea = fermi_sea(L, apbc=True)
-    pbc_sea  = fermi_sea(L, apbc=False)
-    print(f"  APBC (fermi sea size={len(apbc_sea)}): {ground_state_energy(L, False)}")
-    print(f"  PBC  (fermi sea size={len(pbc_sea)}): {ground_state_energy(L, True)}")
-
-
-def test_fermi_sea_size(L):
-    if L % 2 == 1:
-        l = (L-1)/2
-        Nparticles = l+1 if l % 2 == 1 else l
-    else:
-        Nparticles = L/2
-    Nparticles = int(Nparticles)
-    sea = fermi_sea(L)
-    print(f"L = {L}, Nparticles = {Nparticles}, size of Fermi sea = {len(sea)}")
-    return Nparticles == len(sea)
-
-
-def test_fermi_wavenumber(L, apbc=False):
-    # TODO il test funziona solo per J < 0
-    k_fermi = fermi_wavenumber(L, apbc)
-    e = dispersion_func(L)
-    print(f"L = {L}, k_fermi = {k_fermi}, e(k_fermi) = {e(k_fermi)}, e(k_fermi + 1) = {e(k_fermi + 1)}")
-    return e(k_fermi) < epsilon and e(k_fermi + 1) > epsilon
-
-
-def test_conf_set(L1, L2, step=1):
-    for L in range(L1, L2+1, step):
-        print(f"L = {L}, conf = {conf_set(L)}")
-
-
-def plot_dispersion(L, apbc=False):
-    plt.figure()
-    ks = wavenumbers(L, apbc)
-    sea = fermi_sea(L, apbc)
-    momentum = [2 * pi * k / L for k in ks]
-    sea_momentum = [2 * pi * k / L for k in sea]
-    dispersion = dispersion_func(L);
-    gs_energy = ground_state_energy(L, apbc)
-    plt.plot(momentum,     [dispersion(k) for k in ks], 'o-k', label=r'$\epsilon(k)$')
-    plt.plot(sea_momentum, [dispersion(k) for k in sea], 'd-b', label=f'fermi sea (#occ {len(sea)})')
-    plt.plot((0, 2 * pi), (0, 0), ':r')
-    plt.legend()
-    plt.xlabel(r'$2 \pi k / L$')
-    plt.ylabel(r'$\epsilon(k)$')
-    plt.title(f"Dispersion relation for L = {L},"
-        f" {'anti-periodic' if apbc else 'periodic'} bc, "
-        f"$E_0$ = {gs_energy:.4f}")
