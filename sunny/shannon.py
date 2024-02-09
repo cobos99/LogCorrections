@@ -265,12 +265,12 @@ def renyi_inf_entropy(L: int, apbc: bool | None = None, pedantic: bool =False):
     probability instead of supposing that is the one with a staggered
     configuration.
     """
-    print(f" > computing renyi inf entropy for L = {L}:", end=" ")
+    # print(f" > computing renyi inf entropy for L = {L}:", end=" ")
     if pedantic:
         rie = -np.log(max(probabilities(L, apbc=apbc), key=lambda x: x.prob).prob)
     else:
         rie = -np.log(slater_det(L, apbc=apbc))
-    print(f"{rie:.8f}")
+    # print(f"{rie:.8f}")
     return rie
 
 

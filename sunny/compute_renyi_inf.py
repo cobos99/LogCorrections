@@ -31,7 +31,7 @@ expected_alpha = - integrate.quad(
                     )[0] / (2 * np.pi)
 
 
-plt.subplots(1, 2)
+plt.subplots(1, 2, figsize=(10, 5))
 
 plt.subplot(1, 2, 1)
 plt.title("Shannon-Renyi inf entropy")
@@ -50,7 +50,7 @@ plt.title("Difference between even and odd")
 plt.plot(lens_avg, smax_odd - smax_even, 'o-', label="diff")
 plt.grid()
 plt.xlabel(r"$L$")
-plt.ylabel("difference")
+plt.ylabel(r"$- \log p_{\text{max}}^{\text{odd}} + \log p_{\text{max}}^{\text{even}}$")
 
 print("Fit results for even lengths:")
 print_fit_res(fit_res_even)
