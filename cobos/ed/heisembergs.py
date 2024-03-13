@@ -1,67 +1,10 @@
-import numpy as np
 import scipy.sparse as sparse
+import numpy as np
+import paulis
 
 # ---------------------------------------------------------------------
 # AUXILIARY TOOLS TO SIMULATE THE 1D HEISEMBERG MODEL
 # ---------------------------------------------------------------------
-
-def sparse_non_diag_paulis_indices(n, N):
-    """Returns a tuple (row_indices, col_indices) containing the row and col indices of the non_zero elements
-       of the tensor product of a non diagonal pauli matrix (x, y) acting over a single qubit in a Hilbert
-       space of N qubits"""
-    if 0 <= n < N:
-        block_length = 2**(N - n - 1)
-        nblocks = 2**n
-        ndiag_elements = block_length*nblocks
-        k = np.arange(ndiag_elements, dtype=int)
-        red_row_col_ind = (k % block_length) + 2*(k // block_length)*block_length
-        upper_diag_row_indices = red_row_col_ind
-        upper_diag_col_indices = block_length + red_row_col_ind
-        row_indices = np.concatenate((upper_diag_row_indices, upper_diag_col_indices))
-        col_indices = np.concatenate((upper_diag_col_indices, upper_diag_row_indices))
-        return row_indices, col_indices
-    else:
-        raise ValueError("Index n must fulfill 0 <= n < N")
-
-def sparse_pauli_x(n, N, row_indices_cache=None, col_indices_cache=None):
-    """Returns a CSC sparse matrix representation of the pauli_x matrix acting over qubit n in a Hilbert space of N qubits
-       0 <= n < N"""
-    if 0 <= n < N:
-        if (row_indices_cache is None) or (col_indices_cache is None):
-            row_indices_cache, col_indices_cache = sparse_non_diag_paulis_indices(n, N)
-        data = np.ones_like(row_indices_cache)
-        result = sparse.csc_array((data, (row_indices_cache, col_indices_cache)), shape=(2**N, 2**N), dtype=complex)
-        return result
-    else:
-        raise ValueError("Index n must fulfill 0 <= n < N")
-
-def sparse_pauli_y(n, N, row_indices_cache=None, col_indices_cache=None):
-    """Returns a CSC sparse matrix representation of the pauli_y matrix acting over qubit n in a Hilbert space of N qubits
-       0 <= n < N"""
-    if 0 <= n < N :
-        if (row_indices_cache is None) or (col_indices_cache is None):
-            row_indices_cache, col_indices_cache = sparse_non_diag_paulis_indices(n, N)
-        data = -1j*np.ones_like(row_indices_cache)
-        data[len(data)//2::] = 1j
-        result = sparse.csc_array((data, (row_indices_cache, col_indices_cache)), shape=(2**N, 2**N), dtype=complex)
-        return result
-    else:
-        raise ValueError("Index n must fulfill 0 <= n < N")
-
-def sparse_pauli_z(n, N):
-    """Returns a CSC sparse matrix representation of the pauli_z matrix acting over qubit n in a Hilbert space of N qubits
-       0 <= n < N"""
-    if 0 <= n < N:
-        block_length = 2**(N - n)
-        nblocks = 2**n
-        block = np.ones(block_length, dtype=int)
-        block[block_length//2::] = -1
-        diag = np.tile(block, nblocks)
-        row_col_indices = np.arange(2**N, dtype=int)
-        result = sparse.csc_array((diag, (row_col_indices, row_col_indices)), shape=(2**N, 2**N), dtype=complex)
-        return result
-    else:
-        raise ValueError("Index n must fulfill 0 <= n < N")
 
 def sparse_heisemberg_hamiltonian(J, N):
     """Returns a sparse representation of the Hamiltonian of the 1D Heisemberg model in a chain of length N
@@ -72,67 +15,87 @@ def sparse_heisemberg_hamiltonian(J, N):
    
     # First sum over the terms containing sigma_x, sigma_y because the non-zero element indices are the same
     # so that this improves performance
-    n_row_indices, n_col_indices = sparse_non_diag_paulis_indices(0, N)
+    n_row_indices, n_col_indices = paulis.sparse_non_diag_paulis_indices(0, N)
     for n in range(N):
         ntildep1 = (n+1) % N
-        np1_row_indices, np1_col_indices = sparse_non_diag_paulis_indices(ntildep1, N)
-        n_pauli_x = sparse_pauli_x(n, N, n_row_indices, n_col_indices)
-        np1_pauli_x = sparse_pauli_x(ntildep1, N, np1_row_indices, np1_col_indices)
-        n_pauli_y = sparse_pauli_y(n, N, n_row_indices, n_col_indices)
-        np1_pauli_y = sparse_pauli_y(ntildep1, N, np1_row_indices, np1_col_indices)
+        np1_row_indices, np1_col_indices = paulis.sparse_non_diag_paulis_indices(ntildep1, N)
+        n_pauli_x = paulis.sparse_pauli_x(n, N, n_row_indices, n_col_indices)
+        np1_pauli_x = paulis.sparse_pauli_x(ntildep1, N, np1_row_indices, np1_col_indices)
+        n_pauli_y = paulis.sparse_pauli_y(n, N, n_row_indices, n_col_indices)
+        np1_pauli_y = paulis.sparse_pauli_y(ntildep1, N, np1_row_indices, np1_col_indices)
         hamiltonian += (n_pauli_x @ np1_pauli_x) + (n_pauli_y @ np1_pauli_y)
         n_row_indices = np1_row_indices
         n_col_indices = np1_col_indices
    
     # Sum over sigma_z terms
-    n_pauli_z = sparse_pauli_z(0, N)
+    n_pauli_z = paulis.sparse_pauli_z(0, N)
     for n in range(N):
         ntildep1 = (n+1) % N
-        np1_pauli_z = sparse_pauli_z(ntildep1, N)
+        np1_pauli_z = paulis.sparse_pauli_z(ntildep1, N)
         hamiltonian += n_pauli_z @ np1_pauli_z
         n_pauli_z = np1_pauli_z
 
     return -J*hamiltonian/4
 
-def sparse_xxz_hamiltonian(delta, antiferro, N, spin_sector_penalty_factor=10):
+def sparse_xxz_hamiltonian(delta, global_neg, N, spin_sector_penalty_factor=10):
     """Returns a sparse representation of the Hamiltonian of the 1D XXZ model in a chain of length N with periodic boundary conditions
        
        Arguments
        ---------
        delta: Constant in front of the ZZ term
-       antiferro: Boolean setting whether to return the antiferromagnetic Hamiltonian. Sets the sign in front of the (XX + YY) term
+       global_neg: Boolean setting whether a minus sign is introduced in fron of the Hamiltonian
        N: Chain length
     """
     hamiltonian = sparse.csc_array((2**N, 2**N), dtype=complex)
     # Ladder operator terms
-    n_row_indices, n_col_indices = sparse_non_diag_paulis_indices(0, N)
-    sign = (-1)**(antiferro <= 0)
+    n_row_indices, n_col_indices = paulis.sparse_non_diag_paulis_indices(0, N)
+    sign = (-1)**(global_neg)
     for n in range(N):
         ntildep1 = (n + 1) % N
-        np1_row_indices, np1_col_indices = sparse_non_diag_paulis_indices(ntildep1, N)
-        n_pauli_x = sparse_pauli_x(n, N, n_row_indices, n_col_indices)
-        np1_pauli_x = sparse_pauli_x(ntildep1, N, np1_row_indices, np1_col_indices)
-        n_pauli_y = sparse_pauli_y(n, N, n_row_indices, n_col_indices)
-        np1_pauli_y = sparse_pauli_y(ntildep1, N, np1_row_indices, np1_col_indices)
+        np1_row_indices, np1_col_indices = paulis.sparse_non_diag_paulis_indices(ntildep1, N)
+        n_pauli_x = paulis.sparse_pauli_x(n, N, n_row_indices, n_col_indices)
+        np1_pauli_x = paulis.sparse_pauli_x(ntildep1, N, np1_row_indices, np1_col_indices)
+        n_pauli_y = paulis.sparse_pauli_y(n, N, n_row_indices, n_col_indices)
+        np1_pauli_y = paulis.sparse_pauli_y(ntildep1, N, np1_row_indices, np1_col_indices)
         hamiltonian += sign*((n_pauli_x @ np1_pauli_x) + (n_pauli_y @ np1_pauli_y))
         n_row_indices = np1_row_indices
         n_col_indices = np1_col_indices
     
     # ZZ and penalty terms
-    n_pauli_z = sparse_pauli_z(0, N)
-    SZ_sum = sparse.csc_array((2**N, 2**N), dtype=complex)
+    n_pauli_z = paulis.sparse_pauli_z(0, N)
+    if N % 2 != 0: SZ_sum = sparse.csc_array((2**N, 2**N), dtype=complex)
     for n in range(N):
         ntildep1 = (n+1) % N
-        np1_pauli_z = sparse_pauli_z(ntildep1, N)
-        hamiltonian += delta*(n_pauli_z @ np1_pauli_z)
-        SZ_sum += n_pauli_z
+        np1_pauli_z = paulis.sparse_pauli_z(ntildep1, N)
+        hamiltonian += sign*delta*(n_pauli_z @ np1_pauli_z)
+        if N % 2 != 0: SZ_sum += n_pauli_z
         n_pauli_z = np1_pauli_z
     
-    penalty_term = (SZ_sum/2 + sparse.identity(hamiltonian.shape[0])/2)
-    penalty_term = penalty_term @ penalty_term
-    hamiltonian += spin_sector_penalty_factor*penalty_term
+    if N % 2 != 0:
+        penalty_term = (SZ_sum/2 - sparse.identity(hamiltonian.shape[0])/2)
+        penalty_term = penalty_term @ penalty_term
+        hamiltonian += spin_sector_penalty_factor*penalty_term
 
     return hamiltonian
+
+def local_thermal_current_operator(delta, n, N):
+    """Returns the local thermal current operator in sparse representation"""
+    if 0 <= n < N:
+        np_tilde = (n+1) % N
+        npp_tilde = (n+2) % N
+        nm_tilde = (n-1) % N
+        first_term = paulis.sparse_pauli_z(n, N) @ (paulis.sparse_ladder_inc(nm_tilde, N) @ paulis.sparse_ladder_dec(np_tilde, N) - paulis.sparse_ladder_inc(np_tilde, N) @ paulis.sparse_ladder_dec(nm_tilde, N))
+        second_term = (paulis.sparse_pauli_z(nm_tilde, N) + paulis.sparse_pauli_z(npp_tilde, N))*(paulis.sparse_ladder_inc(n, N) @ paulis.sparse_ladder_dec(np_tilde, N) - paulis.sparse_ladder_inc(np_tilde, N) @ paulis.sparse_ladder_dec(n, N))
+        return -1j*(first_term - delta*second_term)
+    else:
+        raise ValueError("Index n must fulfill 0 <= n < N")
+    
+def total_thermal_current_operator(delta, N):
+    """Returns the total thermal current operator in sparse representation"""
+    total_operator = sparse.csc_array((2**N, 2**N), dtype=complex)
+    for n in range(N):
+        total_operator += local_thermal_current_operator(delta, n, N)
+    return total_operator
 
 def singlet_chain_state(N):
     """Returns the state corresponding to pairs of spin singlet states in a spin chain of N (even) qubits"""
