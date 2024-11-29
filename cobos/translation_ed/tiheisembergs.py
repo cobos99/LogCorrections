@@ -170,7 +170,8 @@ class tincxxz:
 
 def next_lex_permutation(n: int):
    """Returns the integer corresponding to the next lexicographic permutation
-      of n in binary representation (5 = "101" -> 6 = "110" -> 9 = "1001" -> ...)"""
+      of n in binary representation (5 = "101" -> 6 = "110" -> 9 = "1001" -> ...)
+      https://stackoverflow.com/questions/1851134/generate-all-binary-strings-of-length-n-with-k-bits-set/2075867#2075867"""
    n = np.uint32(n)
    t = (n | (n - 1)) + 1
    return t | ((((t & -t) // (n & -n)) >> 1) - 1)
