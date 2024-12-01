@@ -3,13 +3,12 @@ import scipy as sp
 import numpy as np
 import os
 
-def min_entropy_delta_L_scaling_plots(max_probabilities_matrix, L_range, delta_range, reg_p0s=[0.1, 0.1, 0.1], filepath=""):
+def min_entropy_delta_L_scaling_plots(max_probabilities_matrix, L_arr, delta_range, reg_p0s=[0.1, 0.1, 0.1], filepath=""):
     plt.rc("text", usetex=True)
     plt.rc("text.latex", preamble=r"\usepackage{physics} \usepackage{mathtools}")
     plt.rc("font", family="serif", size=22, weight="bold")
 
     # Perform the regressions for each delta
-    L_arr = np.arange(L_range[0], L_range[1]+1, max_probabilities_matrix.shape[0])
     delta_arr = np.linspace(*delta_range, max_probabilities_matrix.shape[1])
     min_entropy_func = lambda L, a, b, c: a*L + b*np.log(L) + c
     min_entropy_matrix = -np.log(max_probabilities_matrix)

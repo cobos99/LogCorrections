@@ -37,6 +37,10 @@ function parse_commandline()
             help = "Cutoff for the DMRG"
             arg_type = Float64
             default = 1e-16
+        "--maxnoise", "-s"
+            help = "Maximum value of the noise, the noise will reduce up to zero with increasing sweep"
+            arg_type = Float64
+            default = 0
         "--deltarange", "-d"
             help = "Ranges of delta to cover"
             nargs = 2
@@ -91,10 +95,21 @@ function main()
     else
         energies_matrix = fill(NaN, results_dimensions)
         probabilities_matrix = fill(NaN, results_dimensions)
-        iteration_start = 0
+        iteration_start = 1
     end
 
-    sweeps = HeisenbergMPS.get_sweeps(maxdim=parsed_args["maxbdim"] .* ones(Int, parsed_args["nsweeps"]), cutoff=parsed_args["cutoff"])
+    if parsed_args["maxnoise"] > 0
+        noise_xcoord = range(0, parsed_args["nsweeps"]-5, parsed_args["nsweeps"]-5)
+        noise_interpolation_B = log(parsed_args["maxnoise"]/parsed_args["cutoff"])/(noise_xcoord[end] - noise_xcoord[1])
+        noise_interpolation_A = parsed_args["maxnoise"]*exp(-noise_interpolation_B*noise_xcoord[1])
+        noise_func(x) = noise_interpolation_A*exp(-noise_interpolation_B*x)
+        noise = noise_func.(noise_xcoord)
+        append!(noise, [0., 0., 0., 0., 0.])
+    else
+        noise = 0
+    end
+    sweeps = HeisenbergMPS.get_sweeps(maxdim=parsed_args["maxbdim"] .* ones(Int, parsed_args["nsweeps"]), cutoff=parsed_args["cutoff"], noise=Vector{Real}(noise))
+    print(sweeps)
     for L in (parsed_args["lengthrange"][1]+iteration_start-1):parsed_args["lengthrange"][2]
         for (col, Δ) in pairs(range(parsed_args["deltarange"]..., parsed_args["ndeltas"]))
             println(@sprintf("Running L = %i, Δ = %.02f", L, Δ))
