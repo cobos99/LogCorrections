@@ -61,8 +61,6 @@
 
     - The parameters $a, b$ for the odd cases are close for opposite signs of $\Delta$. In particular $a$ is almost the same. $b$ is close enough for discrepancies to be due to numerical errors. $c$ shows more discrepancies. This is maybe caused by the non-null quasimomenta of the ground state of $H_-$.
 
-    - $a$ Indicates that the even model is actually more similar to the odd $H_-$ case.
-
     - The quasimomenta $k$ of the ground states is
 
         - $H_+: k_1 = \left\lfloor (N - 1)/4 \right\rfloor + (\left\lfloor (N - 1)/4 \right\rfloor \mod 2)$
