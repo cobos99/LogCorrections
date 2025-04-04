@@ -16,7 +16,7 @@ epsilon = 1e-12
 
 
 # Kinetic coupling sign
-J = -1
+J = 1
 
 #------------------------------------------------------------
 # Dispersion relations and Fermi sea
@@ -57,7 +57,6 @@ def default_apbc(L: int) -> bool:
         apbc = True if L % 4 == 0 else False
     else:
         # For odd sizes, the PBC and APBC sectors are degenerate
-        # So assume PBC
         apbc = False
     return apbc
 
@@ -134,24 +133,45 @@ def all_confs(L: int, Np: int | None = None, apbc: bool | None = None) -> Iterat
 
 def slater_det(
         L: int,
-        conf: tuple[int] | None = None,
-        apbc: bool | None = None
+        apbc: bool | None = None,
+        Np: int | None = None,
+        conf: tuple[int] | None = None
     ) -> float:
     """
     Compute the Slater determinant directly of the given configuration `conf`.
     Antiperiodic BC is automatically deduced, unless specified by `apbc`.
     """
+    # Check if Np is a correct value
     if apbc is None:
         apbc = default_apbc(L)
-    sea = fermi_sea(L, apbc)
-    if not conf:
-        conf = staggered_conf(L, Np=len(sea))
-    Nparticles = len(conf)
-    if len(sea) != len(conf):
-        raise ValueError(f"Number of particles in `conf` ({len(conf)}) does not"
-                         f" match the number of occupied modes in the Fermi sea ({len(sea)})")
+    sea = []
+    # This fucking sucks
+    if Np is not None:
+        if L % 2 == 1:
+            if L != 2*Np + 1 and L != 2*Np - 1:
+                raise ValueError(f"Invalid value of Np = {Np} for L = {L}")
+            sea = fermi_sea(L, apbc)
+            # This is very ugly
+            if len(sea) != Np:
+                apbc = not apbc
+                sea = fermi_sea(L, apbc)
+        else:
+            if L != 2*Np:
+                raise ValueError(f"Invalid value of Np = {Np} for L = {L}")
+            sea = fermi_sea(L, apbc)
+        # Specifying Np takes overwrite conf
+        conf = staggered_conf(L, Np=Np)
+    else:
+        sea = fermi_sea(L, apbc)
+        if not conf:
+            conf = staggered_conf(L, Np=len(sea))
+        if len(sea) != len(conf):
+            raise ValueError(f"Number of particles in `conf` ({len(conf)}) does not"
+                             f" match the number of occupied modes in the Fermi sea ({len(sea)})")
+        Np = len(conf)
 
-    positions = np.array(conf).reshape((Nparticles, 1))
+    Nparticles = len(conf)
+    positions = np.array(conf).reshape((Nparticles, 1)) # row vector
     momenta = np.array(sea)
     slater_mat = np.exp(-2j * pi * positions * momenta / L)
     return np.abs(np.linalg.det(slater_mat))**2 / (L**Nparticles)
@@ -257,7 +277,7 @@ def max_probs2(L, Np : bool | None = None, apbc: bool | None = None):
 #------------------------------------------------------------
 # Renyi inf entropy and Shannon entropy
 #------------------------------------------------------------
-def renyi_inf_entropy(L: int, apbc: bool | None = None, pedantic: bool =False):
+def renyi_inf_entropy(L: int, apbc: bool | None = None, pedantic: bool =False, Np: None | int = None):
     """
     Compute the Renyi entropy of infinite order, i.e. -log(p_max), for a system
     of size `L`.
@@ -269,7 +289,10 @@ def renyi_inf_entropy(L: int, apbc: bool | None = None, pedantic: bool =False):
     if pedantic:
         rie = -np.log(max(probabilities(L, apbc=apbc), key=lambda x: x.prob).prob)
     else:
-        rie = -np.log(slater_det(L, apbc=apbc))
+        if Np is not None:
+            rie = -np.log(slater_det(L, Np=Np))
+        else:
+            rie = -np.log(slater_det(L, apbc=apbc))
     # print(f"{rie:.8f}")
     return rie
 

@@ -41,12 +41,17 @@ super_lin = FitFn(
 )
 
 
-def print_fit(params, msg: str, fit_fn: FitFn):
+def print_fit(params, msg: str, fit_fn: FitFn, errors=None):
     """Print fitting parameters with message `msg`"""
     print(f"\n{msg}")
     print(f"  {fit_fn.fn_label}")
-    for name, param in zip(fit_fn.labels, params):
-        print(f"    {name} = {param}")
+    if errors is not None:
+        for name, param, error in zip(fit_fn.labels, params, errors):
+            print(f"    {name} = {param:.8f}+-{error:.8f}")
+    else:
+        for name, param in zip(fit_fn.labels, params):
+            print(f"    {name} = {param}")
+
     print()
 
 
@@ -58,9 +63,10 @@ def do_fit(xdata, ydata, fit_fn: FitFn = None, msg: str = None):
     """
     if fit_fn is None:
         fit_fn = lin_log
-    fit_params, _ = curve_fit(fit_fn.fn, xdata, ydata)
+    fit_params, fit_pconv = curve_fit(fit_fn.fn, xdata, ydata)
+    fit_err = np.sqrt(np.diag(fit_pconv))
     fitted_fn = np.array([ fit_fn(x, *fit_params) for x in xdata])
-    print_fit(fit_params, msg=msg, fit_fn=fit_fn)
+    print_fit(fit_params, msg=msg, fit_fn=fit_fn, errors=fit_err)
     return fit_params, fitted_fn
 
 
@@ -71,7 +77,7 @@ def plot(xdata, ydata, tag: str, fit_fn: FitFn = None, label: str = None, msg: s
     if label is None:
         label = f"fit {tag}"
     params, fn = do_fit(xdata, ydata, fit_fn=fit_fn, msg=msg)
-    plt.plot(xdata, fn, "--", label=label)
+    plt.plot(xdata, fn, "--", label=label, linewidth=3)
 
 
 def with_fit(tag, fit_fn: FitFn=None, label=None, msg=None):

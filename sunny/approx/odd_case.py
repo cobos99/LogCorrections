@@ -27,7 +27,7 @@ def phi(l):
 def delta_fn(j, l):
     """Function that enter the deviation term"""
     eps = pi / (2*l + 1)
-    angle = lambda j: pi * j / (l + 1/2)
+    angle = lambda j: 2 * pi * j / (2*l + 1)
     return j * log(sin(angle(j) - eps) / sin(angle(j)))
 
 def delta(l):
