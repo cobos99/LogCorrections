@@ -67,12 +67,12 @@ plt.legend(shadow=True, loc="lower right")
 
 # Save fig
 plt.tight_layout()
-plt.savefig("Smax_diff.pdf", bbox_inches='tight')
+# plt.savefig("Smax_diff.pdf", bbox_inches='tight')
 
 print("Fit results for even lengths:")
 print_fit_res(fit_res_even)
 print("Fit results for odd lengths:")
 print_fit_res(fit_res_odd)
 
-plt.savefig("max_entropy_XX.pdf", bbox_inches="tight")
+# plt.savefig("max_entropy_XX.pdf", bbox_inches="tight")
 plt.show()

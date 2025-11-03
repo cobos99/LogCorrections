@@ -3,3 +3,4 @@ __pycache__/
 *.h5
 *.npy
 *.zip
+.ipynb_checkpoints/

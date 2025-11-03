@@ -159,7 +159,7 @@ def slater_det(
             if L != 2*Np:
                 raise ValueError(f"Invalid value of Np = {Np} for L = {L}")
             sea = fermi_sea(L, apbc)
-        # Specifying Np takes overwrite conf
+        # Specifying Np overwrite conf
         conf = staggered_conf(L, Np=Np)
     else:
         sea = fermi_sea(L, apbc)
